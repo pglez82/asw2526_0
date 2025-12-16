@@ -58,7 +58,7 @@ jobs:
           workdir: users
 
   docker-push-webapp:
-    name: Publish webapp image (elgohr)
+    name: Publish webapp image
     runs-on: ubuntu-latest
     needs: test
     permissions:
