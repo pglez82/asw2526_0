@@ -2,6 +2,7 @@ services:
   users:
     build: ./users
     container_name: users
+    image: ghcr.io/pglez82/asw2565_0/users:latest
     ports:
       - "3000:3000"
 
@@ -11,6 +12,7 @@ services:
       args:
         - VITE_API_URL=http://localhost:3000
     container_name: webapp
+    image: ghcr.io/pglez82/asw2565_0/webapp:latest
     ports:
       - "80:80"
     depends_on:
