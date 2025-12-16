@@ -1,0 +1,17 @@
+services:
+  users:
+    build: ./users
+    container_name: users
+    ports:
+      - "3000:3000"
+
+  webapp:
+    build:
+      context: ./webapp
+      args:
+        - VITE_API_URL=http://localhost:3000
+    container_name: webapp
+    ports:
+      - "80:80"
+    depends_on:
+      - users

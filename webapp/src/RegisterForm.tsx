@@ -18,7 +18,8 @@ const RegisterForm: React.FC = () => {
 
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3000/createuser', {
+      const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+      const res = await fetch(`${API_URL}/createuser`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
