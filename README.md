@@ -1,4 +1,5 @@
-# Example Project
+# ASW 2025-2026 Labs project
+[![Release — Test, Build, Publish, Deploy](https://github.com/pglez82/asw2526_0/actions/workflows/release-deploy.yml/badge.svg)](https://github.com/pglez82/asw2526_0/actions/workflows/release-deploy.yml)
 
 This project is a template with some basic functionality for the ASW labs.
 
