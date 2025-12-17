@@ -15,8 +15,8 @@ jobs:
         node-version: 22
     - run: npm --prefix users ci
     - run: npm --prefix webapp ci
-    - run: npm --prefix users test:coverage
-    - run: npm --prefix webapp test:coverage
+    - run: npm --prefix users run test:coverage
+    - run: npm --prefix webapp run test:coverage
     - name: Analyze with SonarQube
       uses: SonarSource/sonarqube-scan-action@master
       env:
