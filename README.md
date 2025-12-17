@@ -1,0 +1,112 @@
+# Example Project
+
+This project is a template with some basic functionality for the ASW labs.
+
+## Project Structure
+
+The project is divided into two main components, each in its own directory:
+
+-   `webapp/`: A frontend application built with React, Vite, and TypeScript.
+-   `users/`: A backend service for managing users, built with Node.js and Express.
+
+Each component has its own `package.json` file with the necessary scripts to run and test the application.
+
+## Basic Features
+
+*   **User Registration**: The web application provides a simple form to register new users.
+*   **User Service**: The user service receives the registration request, simulates some processing, and returns a welcome message.
+
+## Components
+
+### Webapp
+
+The `webapp` is a single-page application (SPA) created with [Vite](https://vitejs.dev/) and [React](https://reactjs.org/).
+
+-   `src/App.tsx`: The main component of the application.
+-   `src/RegisterForm.tsx`: The component that renders the user registration form.
+-   `package.json`: Contains scripts to run, build, and test the webapp.
+-   `vite.config.ts`: Configuration file for Vite.
+-   `Dockerfile`: Defines the Docker image for the webapp.
+
+### Users Service
+
+The `users` service is a simple REST API built with [Node.js](https://nodejs.org/) and [Express](https://expressjs.com/).
+
+-   `users-service.js`: The main file for the user service. It defines an endpoint `/createuser` to handle user creation.
+-   `package.json`: Contains scripts to start the service.
+-   `Dockerfile`: Defines the Docker image for the user service.
+
+## Running the Project
+
+You can run this project using Docker (recommended) or locally without Docker.
+
+### With Docker
+
+This is the easiest way to get the project running. You need to have [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed.
+
+1.  **Build and run the containers:**
+    From the root directory of the project, run:
+    ```bash
+    docker-compose up --build
+    ```
+    This command will build the Docker images for both the `webapp` and `users` services and start them.
+
+2.  **Access the application:**
+    *   Web application: [http://localhost](http://localhost)
+    *   User service API: [http://localhost:3000](http://localhost:3000)
+
+### Without Docker
+
+To run the project without Docker, you will need to run each component in a separate terminal.
+
+#### Prerequisites
+
+*   [Node.js](https://nodejs.org/) and npm installed.
+
+#### 1. Running the User Service
+
+1.  **Navigate to the `users` directory:**
+    ```bash
+    cd users
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Run the service:**
+    ```bash
+    npm start
+    ```
+    The user service will be available at `http://localhost:3000`.
+
+#### 2. Running the Web Application
+
+1.  **Navigate to the `webapp` directory:**
+    ```bash
+    cd webapp
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Run the application:**
+    ```bash
+    npm run dev
+    ```
+    The web application will be available at `http://localhost:5173`.
+
+## Available Scripts
+
+Each component has its own set of scripts defined in its `package.json`. Here are some of the most important ones:
+
+### Webapp (`webapp/package.json`)
+
+-   `npm run dev`: Starts the development server for the webapp.
+-   `npm test`: Runs the unit tests.
+-   `npm run test:e2e`: Runs the end-to-end tests.
+-   `npm run start:all`: A convenience script to start both the `webapp` and the `users` service concurrently.
+
+### Users (`users/package.json`)
+
+-   `npm start`: Starts the user service.
+-   `npm test`: Runs the tests for the service.
