@@ -5,6 +5,8 @@ services:
     image: ghcr.io/pglez82/asw2526_0-users:latest
     ports:
       - "3000:3000"
+    networks:
+      - monitor-net
 
   webapp:
     build:
@@ -17,3 +19,29 @@ services:
       - "80:80"
     depends_on:
       - users
+    networks:
+      - monitor-net
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./users/monitoring/prometheus:/etc/prometheus
+    networks:
+      - monitor-net
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "9091:9091"
+    volumes:
+      - ./users/monitoring/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - monitor-net
+
+networks:
+  monitor-net:
+    driver: bridge
