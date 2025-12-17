@@ -1,5 +1,7 @@
 # ASW 2025-2026 Labs project
 [![Release — Test, Build, Publish, Deploy](https://github.com/pglez82/asw2526_0/actions/workflows/release-deploy.yml/badge.svg)](https://github.com/pglez82/asw2526_0/actions/workflows/release-deploy.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=pglez82_asw2526_0&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=pglez82_asw2526_0)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=pglez82_asw2526_0&metric=coverage)](https://sonarcloud.io/summary/new_code?id=pglez82_asw2526_0)
 
 This project is a template with some basic functionality for the ASW labs.
 
