@@ -10,13 +10,10 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:watch": "vitest --watch",
-    "test:e2e": "cucumber-js --import test/e2e/support/**/*.mjs --import test/e2e/steps/**/*.mjs test/e2e/features --format progress",
-    "test:e2e:headed": "PLAYWRIGHT_HEADLESS=false cucumber-js --import test/e2e/support/**/*.mjs --import test/e2e/steps/**/*.mjs test/e2e/features --format progress",
-    "test:e2e:slow": "PLAYWRIGHT_HEADLESS=false PLAYWRIGHT_SLOWMO=200 cucumber-js --import test/e2e/support/**/*.mjs --import test/e2e/steps/**/*.mjs test/e2e/features --format progress",
-    "test:e2e:debug": "PLAYWRIGHT_HEADLESS=false PLAYWRIGHT_SLOWMO=200 PLAYWRIGHT_DEVTOOLS=true cucumber-js --import test/e2e/support/**/*.mjs --import test/e2e/steps/**/*.mjs test/e2e/features --format progress",
-    "test:e2e:dev": "start-server-and-test start:all http://localhost:5173 test:e2e",
+    "test:e2e:run": "cucumber-js --import test/e2e/support/**/*.mjs --import test/e2e/steps/**/*.mjs test/e2e/features --format progress",
+    "test:e2e": "start-server-and-test start:all http://localhost:5173 test:e2e:run",
     "test:e2e:install-browsers": "npx playwright install",
-    "start:all": "concurrently \"vite\" \"npm --prefix ../users start\" --kill-others-on-fail"
+    "start:all": "concurrently \"npm run dev\" \"npm --prefix ../users start\""
   },
   "dependencies": {
     "react": "^18.3.1",
