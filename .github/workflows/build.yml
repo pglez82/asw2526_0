@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
@@ -21,10 +23,13 @@ jobs:
     - run: npm --prefix webapp ci
     - run: npm --prefix users run test:coverage
     - run: npm --prefix webapp run test:coverage
-    - name: Install cargo-tarpaulin
-      run: cargo install cargo-tarpaulin
+    - name: Install cargo-llvm-cov
+      run: cargo install cargo-llvm-cov --locked
     - name: Generate gamey code coverage
-      run: cd gamey && cargo tarpaulin --out Lcov
+      run: cd gamey && cargo llvm-cov --lcov --output-path lcov.info
+    - name: Normalize Rust coverage paths
+      run: |
+        sed -i "s|SF:${GITHUB_WORKSPACE}/|SF:|g" gamey/lcov.info
     - name: Analyze with SonarQube
       uses: SonarSource/sonarqube-scan-action@master
       env:
