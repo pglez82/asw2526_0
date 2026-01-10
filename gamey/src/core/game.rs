@@ -1,0 +1,745 @@
+use crate::{
+    Action, Coordinates, GameAction, GameYError, Movement, PlayerId, RenderOptions, YEN, YGN, ygn,
+};
+use std::collections::HashMap;
+use std::fmt::Write;
+use std::path::Path;
+
+pub type Result<T> = std::result::Result<T, crate::GameYError>;
+
+type SetIdx = usize;
+
+/// Internal representation of a game.
+#[derive(Debug, Clone)]
+pub struct GameY {
+    // Size of the board (length of one side of the triangular board).
+    board_size: u32,
+
+    // Mapping from coordinates to identifiers of players who placed stones there.
+    board_map: HashMap<Coordinates, (SetIdx, PlayerId)>,
+
+    status: GameStatus,
+
+    // History of moves made in the game.
+    history: Vec<Movement>,
+
+    // Union-Find data structure to track connected components for each player
+    sets: Vec<PlayerSet>,
+
+    available_cells: Vec<u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cell {
+    Empty,
+    Occupied(PlayerId),
+}
+
+impl GameY {
+    /// Creates a new game with the specified board size and number of players.
+    pub fn new(board_size: u32) -> Self {
+        let total_cells = (board_size * (board_size + 1)) / 2;
+        Self {
+            board_size,
+            board_map: HashMap::new(),
+            history: Vec::new(),
+            sets: Vec::new(),
+            status: GameStatus::Ongoing {
+                next_player: PlayerId::new(0),
+            },
+            available_cells: (0..total_cells).collect(),
+        }
+    }
+
+    pub fn status(&self) -> &GameStatus {
+        &self.status
+    }
+
+    pub fn check_game_over(&self) -> bool {
+        match self.status {
+            GameStatus::Ongoing { .. } => false,
+            GameStatus::Finished { winner: _ } => true,
+        }
+    }
+
+    pub fn available_cells(&self) -> &Vec<u32> {
+        &self.available_cells
+    }
+
+    pub fn total_cells(&self) -> u32 {
+        (self.board_size * (self.board_size + 1)) / 2
+    }
+
+    pub fn check_player_turn(&self, movement: &Movement) -> Result<()> {
+        if let GameStatus::Ongoing { next_player } = self.status {
+            let player = match movement {
+                Movement::Placement { player, .. } => *player,
+                Movement::Action { player, .. } => *player,
+            };
+            if player != next_player {
+                return Err(GameYError::InvalidPlayerTurn {
+                    expected: next_player,
+                    found: player,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    pub fn next_player(&self) -> Option<PlayerId> {
+        if let GameStatus::Ongoing { next_player } = self.status {
+            Some(next_player)
+        } else {
+            None
+        }
+    }
+
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let filename = path.as_ref().display().to_string();
+        let file_content = std::fs::read_to_string(path).map_err(|e| GameYError::IoError {
+            message: format!("Failed to read file: {}", filename),
+            error: e.to_string(),
+        })?;
+        let yen: YEN =
+            serde_json::from_str(&file_content).map_err(|e| GameYError::SerdeError { error: e })?;
+        GameY::try_from(yen)
+    }
+
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let yen: YEN = self.into();
+        let json_content =
+            serde_json::to_string_pretty(&yen).map_err(|e| GameYError::SerdeError { error: e })?;
+        let filename = path.as_ref().display().to_string();
+        std::fs::write(path, json_content).map_err(|e| GameYError::IoError {
+            message: format!("Failed to write file: {}", filename),
+            error: e.to_string(),
+        })?;
+        Ok(())
+    }
+
+    /// Adds a move to the game.
+    pub fn add_move(&mut self, movement: Movement) -> Result<()> {
+        // self.check_game_over(&movement)?;
+        // self.check_player_turn(&movement)?;
+        match movement {
+            Movement::Placement { player, coords } => {
+                if self.check_game_over() {
+                    tracing::info!("Game is already over. Move: {} could be ignored", movement);
+                }
+                if self.board_map.contains_key(&coords) {
+                    return Err(GameYError::Occupied {
+                        coordinates: coords,
+                        player,
+                    });
+                }
+                let cell_idx = coords.to_index(self.board_size);
+
+                // Remove from available cells
+                self.available_cells.retain(|&x| x != cell_idx);
+
+                // Create a new player set for this placement
+                let set_idx = self.sets.len();
+                let new_set = PlayerSet {
+                    parent: set_idx,
+                    touches_side_a: coords.touches_side_a(),
+                    touches_side_b: coords.touches_side_b(),
+                    touches_side_c: coords.touches_side_c(),
+                };
+                self.sets.push(new_set);
+
+                // Insert the piece into the board map
+                self.board_map.insert(coords, (set_idx, player));
+
+                let mut won = self.sets[set_idx].touches_side_a
+                    && self.sets[set_idx].touches_side_b
+                    && self.sets[set_idx].touches_side_c;
+
+                let neighbors = self.get_neighbors(&coords);
+                for neighbor in neighbors {
+                    if let Some((neighbor_idx, neighbor_player)) = self.board_map.get(&neighbor)
+                        && *neighbor_player == player
+                    {
+                        let connection_won = self.union(set_idx, *neighbor_idx);
+                        won = won || connection_won;
+                    }
+                }
+
+                if self.check_game_over() {
+                    tracing::info!(
+                        "Game was already over. Move: {} is ignored to check game over",
+                        movement
+                    );
+                } else if !won {
+                    tracing::debug!("No win yet after move: {}", movement);
+                    self.status = GameStatus::Ongoing {
+                        next_player: other_player(player),
+                    };
+                } else {
+                    tracing::debug!("Player {} wins the game!", player);
+                    self.status = GameStatus::Finished { winner: player };
+                }
+            }
+
+            Movement::Action {
+                player,
+                action: GameAction::Resign,
+            } => {
+                self.status = GameStatus::Finished {
+                    winner: other_player(player),
+                };
+            }
+
+            Movement::Action {
+                player,
+                action: GameAction::Swap,
+            } => {
+                self.status = GameStatus::Ongoing {
+                    next_player: other_player(player),
+                };
+            }
+        }
+        self.history.push(movement);
+        Ok(())
+    }
+
+    pub fn board_size(&self) -> u32 {
+        self.board_size
+    }
+
+    /// Get the neighbours of a given cell.
+    fn get_neighbors(&self, coords: &Coordinates) -> Vec<Coordinates> {
+        let mut neighbors = Vec::new();
+        let x = coords.x();
+        let y = coords.y();
+        let z = coords.z();
+
+        if x > 0 {
+            neighbors.push(Coordinates::new(x - 1, y + 1, z));
+            neighbors.push(Coordinates::new(x - 1, y, z + 1));
+        }
+        if y > 0 {
+            neighbors.push(Coordinates::new(x + 1, y - 1, z));
+            neighbors.push(Coordinates::new(x, y - 1, z + 1));
+        }
+        if z > 0 {
+            neighbors.push(Coordinates::new(x + 1, y, z - 1));
+            neighbors.push(Coordinates::new(x, y + 1, z - 1));
+        }
+        neighbors
+    }
+
+    /// Renders the current state of the board as a text string.
+    /// If `show_coordinates` is true, the coordinates of each cell will be displayed.
+    pub fn render(&self, options: &RenderOptions) -> String {
+        let mut result = String::new();
+        let coords_size = self.board_size.to_string().len() as u32;
+
+        let _ = writeln!(result, "--- Game of Y (Size {}) ---", self.board_size);
+
+        for row in 0..self.board_size {
+            let x = self.board_size - 1 - row;
+
+            let indent_multiplier = match (options.show_3d_coords, options.show_idx) {
+                (true, true) => 8,
+                (true, false) => 4,
+                (false, true) => 4,
+                (false, false) => 2,
+            };
+
+            indent(&mut result, x * indent_multiplier);
+
+            for y in 0..=row {
+                let z = row - y;
+
+                let coords = Coordinates::new(x, y, z);
+                let player = self.board_map.get(&coords).map(|(_, p)| *p);
+
+                let mut symbol = match player {
+                    Some(p) => format!("{}", p),
+                    None => ".".to_string(),
+                };
+
+                if options.show_3d_coords {
+                    symbol.push_str(
+                        format!(
+                            "({:0width$},{:0width$},{:0width$})",
+                            x,
+                            y,
+                            z,
+                            width = coords_size as usize
+                        )
+                        .as_str(),
+                    );
+                }
+                if options.show_idx {
+                    let idx = coords.to_index(self.board_size);
+                    symbol.push_str(format!("({}) ", idx).as_str());
+                }
+                if options.show_colors {
+                    match player {
+                        Some(p) if p.id() == 0 => {
+                            symbol = format!("\x1b[34m{}\x1b[0m", symbol); // Blue for player 0
+                        }
+                        Some(p) if p.id() == 1 => {
+                            symbol = format!("\x1b[31m{}\x1b[0m", symbol); // Red for player 1
+                        }
+                        _ => {}
+                    }
+                }
+
+                let _ = write!(result, "{}   ", symbol);
+            }
+            result.push('\n');
+            if options.show_idx || options.show_3d_coords {
+                result.push('\n');
+            }
+        }
+        result
+    }
+
+    /// Disjoint Set Union 'Find' with path compression
+    fn find(&mut self, i: SetIdx) -> SetIdx {
+        if self.sets[i].parent == i {
+            i
+        } else {
+            self.sets[i].parent = self.find(self.sets[i].parent);
+            self.sets[i].parent
+        }
+    }
+
+    /// Disjoint Set Union 'Union' operation
+    fn union(&mut self, i: SetIdx, j: SetIdx) -> bool {
+        let root_i = self.find(i);
+        let root_j = self.find(j);
+
+        if root_i != root_j {
+            self.sets[root_i].parent = root_j;
+            // Merge side properties
+            self.sets[root_j].touches_side_a |= self.sets[root_i].touches_side_a;
+            self.sets[root_j].touches_side_b |= self.sets[root_i].touches_side_b;
+            self.sets[root_j].touches_side_c |= self.sets[root_i].touches_side_c;
+            return self.sets[root_j].touches_side_a
+                && self.sets[root_j].touches_side_b
+                && self.sets[root_j].touches_side_c;
+        }
+        false
+    }
+}
+
+// Helper struct for union-find to track connected components
+#[derive(Clone, Debug)]
+struct PlayerSet {
+    parent: SetIdx,
+    // We track which sides this specific set of pieces is touching
+    touches_side_a: bool,
+    touches_side_b: bool,
+    touches_side_c: bool,
+}
+
+fn indent(str: &mut String, level: u32) {
+    str.push_str(&" ".repeat(level as usize));
+}
+
+impl TryFrom<YGN> for GameY {
+    type Error = GameYError;
+
+    fn try_from(value: YGN) -> Result<Self> {
+        check_num_players(value.config.num_players)?;
+        let mut game = GameY::new(value.config.size);
+        for game_move in value.history {
+            match game_move {
+                ygn::Move::Placement { player, coords } => {
+                    let coords =
+                        Coordinates::from_vec(&coords).ok_or(GameYError::BadCoordsNumber {
+                            expected: 3,
+                            found: coords.len(),
+                        })?;
+                    game.add_move(Movement::Placement {
+                        player: PlayerId::new(player),
+                        coords,
+                    })?;
+                }
+                ygn::Move::Action { player, action } => {
+                    let action = match action {
+                        Action::Swap => GameAction::Swap,
+                        Action::Resign => GameAction::Resign,
+                    };
+                    game.add_move(Movement::Action {
+                        player: PlayerId::new(player),
+                        action,
+                    })?;
+                }
+            }
+        }
+        Ok(game)
+    }
+}
+
+fn check_num_players(num_players: u32) -> Result<()> {
+    if num_players != 2 {
+        Err(GameYError::InvalidNumPlayers {
+            num_players,
+            expected: 2,
+        })
+    } else {
+        Ok(())
+    }
+}
+
+impl From<GameY> for YGN {
+    fn from(game: GameY) -> Self {
+        let mut history = Vec::new();
+        for game_move in game.history {
+            match game_move {
+                Movement::Placement { player, coords } => {
+                    history.push(ygn::Move::Placement {
+                        player: player.id(),
+                        coords: coords.into(),
+                    });
+                }
+                Movement::Action { player, action } => {
+                    let action = match action {
+                        GameAction::Swap => Action::Swap,
+                        GameAction::Resign => Action::Resign,
+                    };
+                    history.push(ygn::Move::Action {
+                        player: player.id(),
+                        action,
+                    });
+                }
+            }
+        }
+        YGN {
+            config: ygn::Config {
+                size: game.board_size,
+                num_players: 2,
+                variant: crate::notation::ygn::Variant::default(),
+            },
+            history,
+        }
+    }
+}
+
+impl TryFrom<YEN> for GameY {
+    type Error = GameYError;
+
+    fn try_from(game: YEN) -> Result<Self> {
+        let mut ygame = GameY::new(game.size());
+        let rows: Vec<&str> = game.layout().split('/').collect();
+        if rows.len() as u32 != game.size() {
+            return Err(GameYError::InvalidYENLayout {
+                expected: game.size(),
+                found: rows.len() as u32,
+            });
+        }
+        for (row, row_str) in rows.iter().enumerate() {
+            let cells: Vec<char> = row_str.chars().collect();
+            if cells.len() as u32 != row as u32 + 1 {
+                return Err(GameYError::InvalidYENLayoutLine {
+                    expected: row as u32 + 1,
+                    found: cells.len() as u32,
+                    line: row as u32,
+                });
+            }
+            for (col, cell) in cells.iter().enumerate() {
+                let x = game.size() - 1 - (row as u32);
+                let y = col as u32;
+                let z = game.size() - 1 - x - y;
+                let coords = Coordinates::new(x, y, z);
+                match cell {
+                    'B' => {
+                        ygame.add_move(Movement::Placement {
+                            player: PlayerId::new(0),
+                            coords,
+                        })?;
+                    }
+                    'R' => {
+                        ygame.add_move(Movement::Placement {
+                            player: PlayerId::new(1),
+                            coords,
+                        })?;
+                    }
+                    '.' => {}
+                    _ => {
+                        return Err(GameYError::InvalidCharInLayout {
+                            char: *cell,
+                            row,
+                            col,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(ygame)
+    }
+}
+
+impl From<&GameY> for YEN {
+    fn from(game: &GameY) -> Self {
+        let size = game.board_size;
+        let turn = match game.status {
+            GameStatus::Finished { winner } => other_player(winner).id() as u32,
+            GameStatus::Ongoing { next_player } => next_player.id(),
+        };
+        let mut layout = String::new();
+        let total_cells = (game.board_size * (game.board_size + 1)) / 2;
+        let players = vec!['B', 'R'];
+        for idx in 0..total_cells {
+            let coords = Coordinates::from_index(idx, game.board_size);
+            let cell_char = match game.board_map.get(&coords) {
+                Some((_, player)) if player.id() == 0 => 'B',
+                Some((_, player)) if player.id() == 1 => 'R',
+                _ => '.',
+            };
+            layout.push(cell_char);
+            if coords.z() == 0 && coords.x() > 0 {
+                layout.push('/');
+            }
+        }
+        YEN::new(size, turn, players, layout)
+    }
+}
+
+fn other_player(player: PlayerId) -> PlayerId {
+    // Assuming two players with IDs 0 and 1
+    if player.id() == 0 {
+        PlayerId::new(1)
+    } else {
+        PlayerId::new(0)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum GameStatus {
+    Ongoing { next_player: PlayerId },
+    Finished { winner: PlayerId },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_other_player() {
+        assert_eq!(other_player(PlayerId::new(0)), PlayerId::new(1));
+        assert_eq!(other_player(PlayerId::new(1)), PlayerId::new(0));
+    }
+
+    #[test]
+    fn test_game_initialization() {
+        let game = GameY::new(7);
+        assert_eq!(game.board_size, 7);
+        assert_eq!(game.history.len(), 0);
+        match game.status {
+            GameStatus::Ongoing { next_player } => {
+                assert_eq!(next_player, PlayerId::new(0));
+            }
+            _ => panic!("Game should be ongoing"),
+        }
+    }
+
+    // Helper function to compare neighbor sets
+    fn assert_neighbors_match(actual: Vec<Coordinates>, expected: Vec<Coordinates>) {
+        let actual_set: HashSet<_> = actual.into_iter().collect();
+        let expected_set: HashSet<_> = expected.into_iter().collect();
+        assert_eq!(actual_set, expected_set);
+    }
+
+    #[test]
+    fn test_interior_cell_has_six_neighbors() {
+        let board = GameY::new(5);
+        let cell = Coordinates::new(2, 1, 1);
+
+        let neighbors = board.get_neighbors(&cell);
+
+        let expected = vec![
+            Coordinates::new(1, 2, 1),
+            Coordinates::new(1, 1, 2),
+            Coordinates::new(3, 0, 1),
+            Coordinates::new(2, 0, 2),
+            Coordinates::new(3, 1, 0),
+            Coordinates::new(2, 2, 0),
+        ];
+
+        assert_eq!(neighbors.len(), 6);
+        assert_neighbors_match(neighbors, expected);
+    }
+
+    #[test]
+    fn test_corner_cell_has_two_neighbors() {
+        let board = GameY::new(5);
+        let top_corner = Coordinates::new(4, 0, 0);
+
+        let neighbors = board.get_neighbors(&top_corner);
+
+        let expected = vec![Coordinates::new(3, 1, 0), Coordinates::new(3, 0, 1)];
+
+        assert_eq!(neighbors.len(), 2);
+        assert_neighbors_match(neighbors, expected);
+    }
+
+    #[test]
+    fn test_edge_cell_has_four_neighbors() {
+        let board = GameY::new(5);
+        let edge_cell = Coordinates::new(0, 2, 2);
+
+        let neighbors = board.get_neighbors(&edge_cell);
+
+        let expected = vec![
+            Coordinates::new(1, 1, 2),
+            Coordinates::new(0, 1, 3),
+            Coordinates::new(1, 2, 1),
+            Coordinates::new(0, 3, 1),
+        ];
+
+        assert_eq!(neighbors.len(), 4);
+        assert_neighbors_match(neighbors, expected);
+    }
+
+    #[test]
+    fn test_winning_condition() {
+        let mut game = GameY::new(3);
+
+        let moves = vec![
+            Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::new(0, 2, 0),
+            },
+            Movement::Placement {
+                player: PlayerId::new(1),
+                coords: Coordinates::new(2, 0, 0),
+            },
+            Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::new(0, 1, 1),
+            },
+            Movement::Placement {
+                player: PlayerId::new(1),
+                coords: Coordinates::new(1, 1, 0),
+            },
+            Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::new(0, 0, 2),
+            },
+        ];
+
+        for mv in moves {
+            game.add_move(mv).unwrap();
+        }
+
+        match game.status {
+            GameStatus::Finished { winner } => {
+                assert_eq!(winner, PlayerId::new(0));
+            }
+            _ => panic!("Game should be finished with a winner"),
+        }
+    }
+
+    #[test]
+    fn test_yen_conversion() {
+        let mut game = GameY::new(3);
+
+        let moves = vec![
+            Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::new(0, 2, 0),
+            },
+            Movement::Placement {
+                player: PlayerId::new(1),
+                coords: Coordinates::new(2, 0, 0),
+            },
+            Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::new(0, 1, 1),
+            },
+        ];
+
+        for mv in moves {
+            game.add_move(mv).unwrap();
+        }
+
+        let yen: YEN = (&game).into();
+        let loaded_game = GameY::try_from(yen.clone()).unwrap();
+
+        assert_eq!(game.board_size, loaded_game.board_size);
+        let yen_loaded: YEN = (&loaded_game).into();
+        assert_eq!(yen.layout(), yen_loaded.layout());
+    }
+
+    // Test loading a YEN representation of a finished game
+    #[test]
+    fn test_load_yen_end2() {
+        let yen_str = r#"{
+            "size": 2,
+            "turn": 0,
+            "players": ["B","R"],
+            "layout": "B/BB"
+        }"#;
+        let yen: YEN = serde_json::from_str(yen_str).unwrap();
+        let game = GameY::try_from(yen).unwrap();
+        match game.status {
+            GameStatus::Finished { winner } => {
+                assert_eq!(winner, PlayerId::new(0));
+            }
+            _ => panic!("Game should be finished with a winner"),
+        }
+    }
+
+    // Test loading a YEN representation of a finished game
+    #[test]
+    fn test_load_yen_end3() {
+        let yen_str = r#"{
+            "size": 3,
+            "turn": 0,
+            "players": ["B","R"],
+            "layout": "B/BB/BBR"
+        }"#;
+        let yen: YEN = serde_json::from_str(yen_str).unwrap();
+        let game = GameY::try_from(yen).unwrap();
+        match game.status {
+            GameStatus::Finished { winner } => {
+                assert_eq!(winner, PlayerId::new(0));
+            }
+            other => panic!("Game should be finished with a winner. Found: {:?}", other),
+        }
+    }
+
+    // Test loading a YEN representation of a finished game
+    #[test]
+    fn test_load_yen_single_full() {
+        let yen_str = r#"{
+            "size": 1,
+            "turn": 0,
+            "players": ["B","R"],
+            "layout": "B"
+        }"#;
+        let yen: YEN = serde_json::from_str(yen_str).unwrap();
+        let game = GameY::try_from(yen).unwrap();
+        match game.status {
+            GameStatus::Finished { winner } => {
+                assert_eq!(winner, PlayerId::new(0));
+            }
+            other => panic!("Game should be finished with a winner. Found {:?}", other),
+        }
+    }
+
+    // Test loading a YEN representation of a finished game
+    #[test]
+    fn test_load_yen_single_empty() {
+        let yen_str = r#"{
+            "size": 1,
+            "turn": 0,
+            "players": ["B","R"],
+            "layout": "."
+        }"#;
+        let yen: YEN = serde_json::from_str(yen_str).unwrap();
+        let game = GameY::try_from(yen).unwrap();
+        match game.status {
+            GameStatus::Ongoing { next_player } => {
+                assert_eq!(next_player, PlayerId::new(0));
+            }
+            _ => panic!("Game should be ongoing"),
+        }
+    }
+}
