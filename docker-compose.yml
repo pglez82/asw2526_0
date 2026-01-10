@@ -22,6 +22,15 @@ services:
     networks:
       - monitor-net
 
+  gamey:
+    build: ./gamey
+    container_name: gamey
+    image: ghcr.io/pglez82/asw2526_0-gamey:latest
+    ports:
+      - "4000:4000"
+    networks:
+      - monitor-net
+
   prometheus:
     image: prom/prometheus
     container_name: prometheus
