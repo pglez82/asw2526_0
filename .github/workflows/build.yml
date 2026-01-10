@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
     - uses: actions/setup-node@v4
       with:
         node-version: 22
@@ -17,6 +21,10 @@ jobs:
     - run: npm --prefix webapp ci
     - run: npm --prefix users run test:coverage
     - run: npm --prefix webapp run test:coverage
+    - name: Install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin
+    - name: Generate gamey code coverage
+      run: cd gamey && cargo tarpaulin --out Lcov
     - name: Analyze with SonarQube
       uses: SonarSource/sonarqube-scan-action@master
       env:
