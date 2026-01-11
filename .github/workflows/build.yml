@@ -29,7 +29,7 @@ jobs:
       run: cd gamey && cargo llvm-cov --lcov --output-path lcov.info
     - name: Normalize Rust coverage paths
       run: |
-        sed -i "s|SF:.*/gamey/|SF:|g" gamey/lcov.info
+        sed -i "s|SF:${GITHUB_WORKSPACE}/|SF:|g" gamey/lcov.info
         grep '^SF:' gamey/lcov.info | head
     - name: Analyze with SonarQube
       uses: SonarSource/sonarqube-scan-action@master
