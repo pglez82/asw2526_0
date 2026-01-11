@@ -7,10 +7,11 @@ This project is a template with some basic functionality for the ASW labs.
 
 ## Project Structure
 
-The project is divided into two main components, each in its own directory:
+The project is divided into three main components, each in its own directory:
 
 -   `webapp/`: A frontend application built with React, Vite, and TypeScript.
 -   `users/`: A backend service for managing users, built with Node.js and Express.
+-   `gamey/`: A Rust game engine and bot service.
 
 Each component has its own `package.json` file with the necessary scripts to run and test the application.
 
@@ -38,6 +39,19 @@ The `users` service is a simple REST API built with [Node.js](https://nodejs.org
 -   `users-service.js`: The main file for the user service. It defines an endpoint `/createuser` to handle user creation.
 -   `package.json`: Contains scripts to start the service.
 -   `Dockerfile`: Defines the Docker image for the user service.
+
+### Gamey
+
+The `gamey` component is a Rust-based game engine with bot support, built with [Rust](https://www.rust-lang.org/) and [Cargo](https://doc.rust-lang.org/cargo/).
+
+-   `src/main.rs`: Entry point for the application.
+-   `src/lib.rs`: Library exports for the gamey engine.
+-   `src/bot/`: Bot implementation and registry.
+-   `src/core/`: Core game logic including actions, coordinates, game state, and player management.
+-   `src/notation/`: Game notation support (YEN, YGN).
+-   `src/web/`: Web interface components.
+-   `Cargo.toml`: Project manifest with dependencies and metadata.
+-   `Dockerfile`: Defines the Docker image for the gamey service.
 
 ## Running the Project
 
@@ -113,3 +127,9 @@ Each component has its own set of scripts defined in its `package.json`. Here ar
 
 -   `npm start`: Starts the user service.
 -   `npm test`: Runs the tests for the service.
+
+### Gamey (`gamey/Cargo.toml`)
+
+-   `cargo build`: Builds the gamey application.
+-   `cargo test`: Runs the unit tests.
+-   `cargo run`: Runs the gamey application.
