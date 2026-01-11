@@ -71,6 +71,7 @@ This is the easiest way to get the project running. You need to have [Docker](ht
 2.  **Access the application:**
     *   Web application: [http://localhost](http://localhost)
     *   User service API: [http://localhost:3000](http://localhost:3000)
+    *   Gamey API: [http://localhost:4000](http://localhost:4000)
 
 ### Without Docker
 
