@@ -1,6 +1,4 @@
-use crate::{
-    Action, Coordinates, GameAction, GameYError, Movement, PlayerId, RenderOptions, YEN, YGN, ygn,
-};
+use crate::{Coordinates, GameAction, GameYError, Movement, PlayerId, RenderOptions, YEN};
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::Path;
@@ -338,86 +336,6 @@ struct PlayerSet {
 
 fn indent(str: &mut String, level: u32) {
     str.push_str(&" ".repeat(level as usize));
-}
-
-impl TryFrom<YGN> for GameY {
-    type Error = GameYError;
-
-    fn try_from(value: YGN) -> Result<Self> {
-        check_num_players(value.config.num_players)?;
-        let mut game = GameY::new(value.config.size);
-        for game_move in value.history {
-            match game_move {
-                ygn::Move::Placement { player, coords } => {
-                    let coords =
-                        Coordinates::from_vec(&coords).ok_or(GameYError::BadCoordsNumber {
-                            expected: 3,
-                            found: coords.len(),
-                        })?;
-                    game.add_move(Movement::Placement {
-                        player: PlayerId::new(player),
-                        coords,
-                    })?;
-                }
-                ygn::Move::Action { player, action } => {
-                    let action = match action {
-                        Action::Swap => GameAction::Swap,
-                        Action::Resign => GameAction::Resign,
-                    };
-                    game.add_move(Movement::Action {
-                        player: PlayerId::new(player),
-                        action,
-                    })?;
-                }
-            }
-        }
-        Ok(game)
-    }
-}
-
-fn check_num_players(num_players: u32) -> Result<()> {
-    if num_players != 2 {
-        Err(GameYError::InvalidNumPlayers {
-            num_players,
-            expected: 2,
-        })
-    } else {
-        Ok(())
-    }
-}
-
-impl From<GameY> for YGN {
-    fn from(game: GameY) -> Self {
-        let mut history = Vec::new();
-        for game_move in game.history {
-            match game_move {
-                Movement::Placement { player, coords } => {
-                    history.push(ygn::Move::Placement {
-                        player: player.id(),
-                        coords: coords.into(),
-                    });
-                }
-                Movement::Action { player, action } => {
-                    let action = match action {
-                        GameAction::Swap => Action::Swap,
-                        GameAction::Resign => Action::Resign,
-                    };
-                    history.push(ygn::Move::Action {
-                        player: player.id(),
-                        action,
-                    });
-                }
-            }
-        }
-        YGN {
-            config: ygn::Config {
-                size: game.board_size,
-                num_players: 2,
-                variant: crate::notation::ygn::Variant::default(),
-            },
-            history,
-        }
-    }
 }
 
 impl TryFrom<YEN> for GameY {
