@@ -192,7 +192,7 @@ fn process_input(
     Ok(())
 }
 
-fn parse_command(input: &str, bound: u32) -> Command {
+pub fn parse_command(input: &str, bound: u32) -> Command {
     let parts: Vec<&str> = input.split_whitespace().collect();
     if parts.is_empty() {
         return Command::None;
@@ -246,7 +246,8 @@ fn print_help() {
     println!("  help            - Show this help message");
 }
 
-enum Command {
+#[derive(Debug, PartialEq)]
+pub enum Command {
     Place { idx: u32 },
     Resign,
     None,
@@ -260,7 +261,7 @@ enum Command {
     Help,
 }
 
-fn parse_idx(part: &str, bound: u32) -> Result<u32, String> {
+pub fn parse_idx(part: &str, bound: u32) -> Result<u32, String> {
     let n = part
         .parse::<u32>()
         .map_err(|_| "Invalid index (not a number)".to_string())?;
