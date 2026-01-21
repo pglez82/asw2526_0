@@ -1,5 +1,5 @@
 use clap::Parser;
-use gamey::{self, CliArgs, Mode, run_cli_game, run_bot_server};
+use gamey::{self, CliArgs, Mode, run_bot_server, run_cli_game};
 use tracing_subscriber::prelude::*;
 
 #[tokio::main] // We use tokio for both modes so the binary is consistent
