@@ -13,9 +13,9 @@ pub struct ChooseParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct MoveResponse {
-    api_version: String,
-    bot_id: String,
-    coords: Coordinates,
+    pub api_version: String,
+    pub bot_id: String,
+    pub coords: Coordinates,
 }
 
 #[axum::debug_handler]

@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct ErrorResponse {
-    api_version: Option<String>,
-    bot_id: Option<String>,
-    message: String,
+    pub api_version: Option<String>,
+    pub bot_id: Option<String>,
+    pub message: String,
 }
 
 impl ErrorResponse {
