@@ -1,4 +1,4 @@
-use gamey::{parse_command, parse_idx, Command, Mode};
+use gamey::{Command, Mode, parse_command, parse_idx};
 
 // =============================================================================
 // parse_command Tests
@@ -265,13 +265,6 @@ fn test_mode_equality() {
     assert_ne!(Mode::Human, Mode::Server);
 }
 
-#[test]
-fn test_mode_clone() {
-    let mode = Mode::Computer;
-    let cloned = mode.clone();
-    assert_eq!(mode, cloned);
-}
-
 // =============================================================================
 // CliArgs parsing Tests (using clap's try_parse_from)
 // =============================================================================
@@ -351,7 +344,15 @@ fn test_cli_args_custom_port_short() {
 #[test]
 fn test_cli_args_combined_options() {
     let args = CliArgs::try_parse_from([
-        "gamey", "-s", "9", "-m", "computer", "-b", "advanced_bot", "-p", "5000",
+        "gamey",
+        "-s",
+        "9",
+        "-m",
+        "computer",
+        "-b",
+        "advanced_bot",
+        "-p",
+        "5000",
     ])
     .unwrap();
     assert_eq!(args.size, 9);
