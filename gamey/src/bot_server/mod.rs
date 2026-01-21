@@ -8,7 +8,7 @@ pub use version::*;
 
 use crate::{RandomBot, YBotRegistry, state::AppState};
 
-pub async fn run_web_server(port: u16) {
+pub async fn run_bot_server(port: u16) {
     let bots = YBotRegistry::new().with_bot(Arc::new(RandomBot));
     let state = AppState::new(bots);
     let app = axum::Router::new()
