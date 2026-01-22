@@ -30,6 +30,24 @@ cargo run
 cargo test
 ```
 
+## Benchmarks
+
+Run the benchmarks using Criterion:
+
+```sh
+cargo bench
+```
+
+## Fuzz Testing
+
+Run fuzz tests using cargo-fuzz (requires nightly Rust):
+
+```sh
+cargo install cargo-fuzz
+cargo +nightly fuzz run fuzz_yen_deserialize
+cargo +nightly fuzz run fuzz_coordinates
+```
+
 ## Documentation
 
 Generate and open the documentation:

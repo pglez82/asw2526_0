@@ -115,6 +115,7 @@ impl Display for Coordinates {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn test_coordinates_conversion() {
@@ -198,5 +199,60 @@ mod tests {
         assert!(!interior.touches_side_a());
         assert!(!interior.touches_side_b());
         assert!(!interior.touches_side_c());
+    }
+
+    // Property-based tests using proptest
+
+    proptest! {
+        /// Property: Converting an index to coordinates and back yields the same index.
+        #[test]
+        fn prop_index_to_coords_roundtrip(board_size in 1u32..=20, idx_factor in 0.0f64..1.0) {
+            let total_cells = (board_size * (board_size + 1)) / 2;
+            let idx = ((idx_factor * total_cells as f64) as u32).min(total_cells - 1);
+            let coords = Coordinates::from_index(idx, board_size);
+            let back = coords.to_index(board_size);
+            prop_assert_eq!(idx, back, "Index {} did not roundtrip for board_size {}", idx, board_size);
+        }
+
+        /// Property: Coordinates from an index always satisfy x + y + z = board_size - 1.
+        #[test]
+        fn prop_coords_sum_invariant(board_size in 1u32..=20, idx_factor in 0.0f64..1.0) {
+            let total_cells = (board_size * (board_size + 1)) / 2;
+            let idx = ((idx_factor * total_cells as f64) as u32).min(total_cells - 1);
+            let coords = Coordinates::from_index(idx, board_size);
+            let sum = coords.x() + coords.y() + coords.z();
+            prop_assert_eq!(sum, board_size - 1,
+                "Sum {} != {} for coords {:?} from index {} on board_size {}",
+                sum, board_size - 1, coords, idx, board_size);
+        }
+
+        /// Property: For valid coordinates, converting to index and back yields the same coordinates.
+        #[test]
+        fn prop_coords_to_index_roundtrip(board_size in 2u32..=20, x_ratio in 0.0f64..1.0, y_ratio in 0.0f64..1.0) {
+            // Generate valid coordinates where x + y + z = board_size - 1
+            let n = board_size - 1;
+            let x = (x_ratio * n as f64) as u32;
+            let remaining = n - x;
+            let y = (y_ratio * remaining as f64) as u32;
+            let z = remaining - y;
+
+            let coords = Coordinates::new(x, y, z);
+            let idx = coords.to_index(board_size);
+            let back = Coordinates::from_index(idx, board_size);
+            prop_assert_eq!(coords, back,
+                "Coords {:?} did not roundtrip for board_size {}", coords, board_size);
+        }
+
+        /// Property: All coordinate components are non-negative (ensured by u32).
+        /// This test verifies the generated index is always within valid bounds.
+        #[test]
+        fn prop_index_within_bounds(board_size in 1u32..=20, idx_factor in 0.0f64..1.0) {
+            let total_cells = (board_size * (board_size + 1)) / 2;
+            let idx = ((idx_factor * total_cells as f64) as u32).min(total_cells - 1);
+            let coords = Coordinates::from_index(idx, board_size);
+            let back_idx = coords.to_index(board_size);
+            prop_assert!(back_idx < total_cells,
+                "Index {} out of bounds (max {}) for board_size {}", back_idx, total_cells - 1, board_size);
+        }
     }
 }
