@@ -115,6 +115,13 @@ pub enum GameYError {
         /// The line number with the error.
         line: u32,
     },
+
+    /// Server operation failed.
+    #[error("Server error: {message}")]
+    ServerError {
+        /// Description of what went wrong.
+        message: String,
+    },
 }
 
 #[cfg(test)]
@@ -224,6 +231,16 @@ mod tests {
         assert!(msg.contains("expected 4"));
         assert!(msg.contains("found 2"));
         assert!(msg.contains("line 3"));
+    }
+
+    #[test]
+    fn test_server_error_display() {
+        let err = GameYError::ServerError {
+            message: "Failed to bind to port 3000".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Server error"));
+        assert!(msg.contains("Failed to bind to port 3000"));
     }
 
     #[test]

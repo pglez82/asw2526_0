@@ -33,7 +33,10 @@ async fn main() {
     let args = CliArgs::parse();
 
     if args.mode == Mode::Server {
-        run_bot_server(args.port).await;
+        if let Err(e) = run_bot_server(args.port).await {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
     } else {
         run_cli_game().expect("End CLI game");
     }

@@ -13,7 +13,9 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     run_bot_server(3000).await;
+//!     if let Err(e) = run_bot_server(3000).await {
+//!         eprintln!("Server error: {}", e);
+//!     }
 //! }
 //! ```
 
@@ -27,7 +29,7 @@ pub use choose::MoveResponse;
 pub use error::ErrorResponse;
 pub use version::*;
 
-use crate::{RandomBot, YBotRegistry, state::AppState};
+use crate::{GameYError, RandomBot, YBotRegistry, state::AppState};
 
 /// Creates the Axum router with the given state.
 ///
@@ -56,15 +58,30 @@ pub fn create_default_state() -> AppState {
 ///
 /// # Arguments
 /// * `port` - The TCP port to listen on
-pub async fn run_bot_server(port: u16) {
+///
+/// # Errors
+/// Returns `GameYError::ServerError` if:
+/// - The TCP port cannot be bound (e.g., port already in use, permission denied)
+/// - The server encounters an error while running
+pub async fn run_bot_server(port: u16) -> Result<(), GameYError> {
     let state = create_default_state();
     let app = create_router(state);
 
     let addr = format!("0.0.0.0:{}", port);
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .map_err(|e| GameYError::ServerError {
+            message: format!("Failed to bind to {}: {}", addr, e),
+        })?;
 
     println!("Server mode: Listening on http://{}", addr);
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app)
+        .await
+        .map_err(|e| GameYError::ServerError {
+            message: format!("Server error: {}", e),
+        })?;
+
+    Ok(())
 }
 
 /// Health check endpoint handler.
