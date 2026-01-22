@@ -4,6 +4,7 @@ FROM rust:latest AS builder
 WORKDIR /app/gamey
 
 # Copy Cargo.toml and Cargo.lock
+COPY benches ./benches
 COPY Cargo.toml Cargo.lock ./
 COPY src/ ./src/
 
