@@ -3,11 +3,16 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::Path;
 
+/// A Result type alias for game operations that may fail with a `GameYError`.
 pub type Result<T> = std::result::Result<T, crate::GameYError>;
 
 type SetIdx = usize;
 
-/// Internal representation of a game.
+/// The main game state for a Y game.
+///
+/// Y is a connection game played on a triangular board where players
+/// take turns placing pieces. The goal is to connect all three sides
+/// of the triangle with a single chain of connected pieces.
 #[derive(Debug, Clone)]
 pub struct GameY {
     // Size of the board (length of one side of the triangular board).
@@ -27,9 +32,12 @@ pub struct GameY {
     available_cells: Vec<u32>,
 }
 
+/// Represents the state of a single cell on the board.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cell {
+    /// The cell has no piece.
     Empty,
+    /// The cell is occupied by a piece belonging to the specified player.
     Occupied(PlayerId),
 }
 
@@ -49,10 +57,12 @@ impl GameY {
         }
     }
 
+    /// Returns the current game status.
     pub fn status(&self) -> &GameStatus {
         &self.status
     }
 
+    /// Returns true if the game has ended (has a winner).
     pub fn check_game_over(&self) -> bool {
         match self.status {
             GameStatus::Ongoing { .. } => false,
@@ -60,14 +70,19 @@ impl GameY {
         }
     }
 
+    /// Returns the list of available cell indices where pieces can be placed.
     pub fn available_cells(&self) -> &Vec<u32> {
         &self.available_cells
     }
 
+    /// Returns the total number of cells on the board.
     pub fn total_cells(&self) -> u32 {
         (self.board_size * (self.board_size + 1)) / 2
     }
 
+    /// Checks if the movement is made by the correct player.
+    ///
+    /// Returns an error if it's not the specified player's turn.
     pub fn check_player_turn(&self, movement: &Movement) -> Result<()> {
         if let GameStatus::Ongoing { next_player } = self.status {
             let player = match movement {
@@ -84,6 +99,7 @@ impl GameY {
         Ok(())
     }
 
+    /// Returns the player who should make the next move, or None if the game is over.
     pub fn next_player(&self) -> Option<PlayerId> {
         if let GameStatus::Ongoing { next_player } = self.status {
             Some(next_player)
@@ -92,6 +108,7 @@ impl GameY {
         }
     }
 
+    /// Loads a game state from a YEN format file.
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let filename = path.as_ref().display().to_string();
         let file_content = std::fs::read_to_string(path).map_err(|e| GameYError::IoError {
@@ -103,6 +120,7 @@ impl GameY {
         GameY::try_from(yen)
     }
 
+    /// Saves the game state to a file in YEN format.
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let yen: YEN = self.into();
         let json_content =
@@ -200,11 +218,12 @@ impl GameY {
         Ok(())
     }
 
+    /// Returns the size of the board (length of one side of the triangle).
     pub fn board_size(&self) -> u32 {
         self.board_size
     }
 
-    /// Get the neighbours of a given cell.
+    /// Returns the neighboring coordinates for a given cell.
     fn get_neighbors(&self, coords: &Coordinates) -> Vec<Coordinates> {
         let mut neighbors = Vec::new();
         let x = coords.x();
@@ -427,9 +446,12 @@ fn other_player(player: PlayerId) -> PlayerId {
     }
 }
 
+/// Represents the current status of a game.
 #[derive(Debug, Clone)]
 pub enum GameStatus {
+    /// The game is still in progress with the specified player to move next.
     Ongoing { next_player: PlayerId },
+    /// The game has ended with a winner.
     Finished { winner: PlayerId },
 }
 

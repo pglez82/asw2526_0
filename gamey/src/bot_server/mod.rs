@@ -1,3 +1,22 @@
+//! HTTP server for Y game bots.
+//!
+//! This module provides an Axum-based REST API for querying Y game bots.
+//! The server exposes endpoints for checking bot status and requesting moves.
+//!
+//! # Endpoints
+//! - `GET /status` - Health check endpoint
+//! - `POST /{api_version}/ybot/choose/{bot_id}` - Request a move from a bot
+//!
+//! # Example
+//! ```no_run
+//! use gamey::run_bot_server;
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     run_bot_server(3000).await;
+//! }
+//! ```
+
 pub mod choose;
 pub mod error;
 pub mod state;
@@ -11,7 +30,8 @@ pub use version::*;
 use crate::{RandomBot, YBotRegistry, state::AppState};
 
 /// Creates the Axum router with the given state.
-/// This is useful for testing without binding to a port.
+///
+/// This is useful for testing the API without binding to a network port.
 pub fn create_router(state: AppState) -> axum::Router {
     axum::Router::new()
         .route("/status", axum::routing::get(status))
@@ -23,11 +43,19 @@ pub fn create_router(state: AppState) -> axum::Router {
 }
 
 /// Creates the default application state with the standard bot registry.
+///
+/// The default state includes the `RandomBot` which selects moves randomly.
 pub fn create_default_state() -> AppState {
     let bots = YBotRegistry::new().with_bot(Arc::new(RandomBot));
     AppState::new(bots)
 }
 
+/// Starts the bot server on the specified port.
+///
+/// This function blocks until the server is shut down.
+///
+/// # Arguments
+/// * `port` - The TCP port to listen on
 pub async fn run_bot_server(port: u16) {
     let state = create_default_state();
     let app = create_router(state);
@@ -39,6 +67,9 @@ pub async fn run_bot_server(port: u16) {
     axum::serve(listener, app).await.unwrap();
 }
 
+/// Health check endpoint handler.
+///
+/// Returns "OK" to indicate the server is running.
 pub async fn status() -> impl IntoResponse {
     "OK"
 }

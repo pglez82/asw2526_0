@@ -2,11 +2,25 @@
 name = "gamey"
 version = "0.1.0"
 edition = "2024"
+description = "A Rust implementation of a game engine"
+authors = [
+    "Jose Emilio Labra Gayo",
+    "Pablo González González",
+    "Diego Martín Fernández",
+    "Celia Melendi Lavandera"
+]
+license = "MIT"
 readme = "./README.md"
+keywords = ["game", "engine"]
+categories = ["games"]
 
 [[bin]]
 path = "src/main.rs"
 name = "gamey"
+
+[lib]
+name = "gamey"
+path = "src/lib.rs"
 
 
 [dependencies]
