@@ -136,45 +136,14 @@ fn process_input(
     let command = parse_command(input, game.total_cells());
     match command {
         Command::Place { idx } => {
-            let coords = Coordinates::from_index(idx, game.board_size());
-            let movement = Movement::Placement {
-                player: *player,
-                coords,
-            };
-            match game.add_move(movement) {
-                Ok(()) => {}
-                Err(e) => {
-                    println!("Error adding move: {}", e);
-                }
-            }
-            if mode == Mode::Computer && !game.check_game_over() {
-                if let Some(bot_coords) = bot.choose_move(game) {
-                    let bot_movement = Movement::Placement {
-                        player: game.next_player().unwrap(),
-                        coords: bot_coords,
-                    };
-                    match game.add_move(bot_movement) {
-                        Ok(()) => {}
-                        Err(e) => {
-                            println!("Error adding bot move: {}", e);
-                        }
-                    }
-                } else {
-                    println!("No available moves for the bot.");
-                }
-            }
+            handle_place_command(game, idx, *player, mode, bot);
         }
         Command::Resign => {
             let movement = Movement::Action {
                 player: *player,
                 action: GameAction::Resign,
             };
-            match game.add_move(movement) {
-                Ok(()) => {}
-                Err(e) => {
-                    println!("Error adding move: {}", e);
-                }
-            }
+            apply_move(game, movement, "Error adding resign move");
         }
         Command::Show3DCoords => {
             render_options.show_3d_coords = !render_options.show_3d_coords;
@@ -319,6 +288,53 @@ pub fn parse_idx(part: &str, bound: u32) -> Result<u32, String> {
         return Err(format!("Index out of bounds: {} > {}", n, bound - 1));
     }
     Ok(n)
+}
+
+/// Application logic for a Move command (Human + optional Bot response)
+fn handle_place_command(
+    game: &mut GameY,
+    idx: u32,
+    player: PlayerId,
+    mode: Mode,
+    bot: &dyn YBot,
+) {
+    let coords = Coordinates::from_index(idx, game.board_size());
+    let movement = Movement::Placement { player, coords };
+
+    if apply_move(game, movement, "Error adding move") {
+        // Only trigger bot if the human move was valid, mode is computer, and game isn't over
+        if mode == Mode::Computer && !game.check_game_over() {
+            trigger_bot_move(game, bot);
+        }
+    }
+}
+
+/// AI logic extracted to its own function
+fn trigger_bot_move(game: &mut GameY, bot: &dyn YBot) {
+    if let Some(bot_coords) = bot.choose_move(game) {
+        // Assuming next_player() is safe to unwrap here because the game isn't over
+        if let Some(bot_player) = game.next_player() {
+            let bot_movement = Movement::Placement {
+                player: bot_player,
+                coords: bot_coords,
+            };
+            apply_move(game, bot_movement, "Error adding bot move");
+        }
+    } else {
+        println!("No available moves for the bot.");
+    }
+}
+
+/// Generic helper to apply a move and handle the Result printing
+/// Returns true if the move was successful
+fn apply_move(game: &mut GameY, movement: Movement, error_msg: &str) -> bool {
+    match game.add_move(movement) {
+        Ok(()) => true,
+        Err(e) => {
+            println!("{}: {}", error_msg, e);
+            false
+        }
+    }
 }
 
 #[cfg(test)]
@@ -495,3 +511,4 @@ mod tests {
         assert!(debug.contains("5"));
     }
 }
+
