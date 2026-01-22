@@ -1,3 +1,5 @@
+use crate::core::SetIdx;
+use crate::core::player_set::PlayerSet;
 use crate::{Coordinates, GameAction, GameYError, Movement, PlayerId, RenderOptions, YEN};
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -5,8 +7,6 @@ use std::path::Path;
 
 /// A Result type alias for game operations that may fail with a `GameYError`.
 pub type Result<T> = std::result::Result<T, crate::GameYError>;
-
-type SetIdx = usize;
 
 /// The main game state for a Y game.
 ///
@@ -135,87 +135,121 @@ impl GameY {
 
     /// Adds a move to the game.
     pub fn add_move(&mut self, movement: Movement) -> Result<()> {
-        // self.check_game_over(&movement)?;
-        // self.check_player_turn(&movement)?;
-        match movement {
+        match &movement {
             Movement::Placement { player, coords } => {
-                if self.check_game_over() {
-                    tracing::info!("Game is already over. Move: {} could be ignored", movement);
-                }
-                if self.board_map.contains_key(&coords) {
-                    return Err(GameYError::Occupied {
-                        coordinates: coords,
-                        player,
-                    });
-                }
-                let cell_idx = coords.to_index(self.board_size);
-
-                // Remove from available cells
-                self.available_cells.retain(|&x| x != cell_idx);
-
-                // Create a new player set for this placement
-                let set_idx = self.sets.len();
-                let new_set = PlayerSet {
-                    parent: set_idx,
-                    touches_side_a: coords.touches_side_a(),
-                    touches_side_b: coords.touches_side_b(),
-                    touches_side_c: coords.touches_side_c(),
-                };
-                self.sets.push(new_set);
-
-                // Insert the piece into the board map
-                self.board_map.insert(coords, (set_idx, player));
-
-                let mut won = self.sets[set_idx].touches_side_a
-                    && self.sets[set_idx].touches_side_b
-                    && self.sets[set_idx].touches_side_c;
-
-                let neighbors = self.get_neighbors(&coords);
-                for neighbor in neighbors {
-                    if let Some((neighbor_idx, neighbor_player)) = self.board_map.get(&neighbor)
-                        && *neighbor_player == player
-                    {
-                        let connection_won = self.union(set_idx, *neighbor_idx);
-                        won = won || connection_won;
-                    }
-                }
-
-                if self.check_game_over() {
-                    tracing::info!(
-                        "Game was already over. Move: {} is ignored to check game over",
-                        movement
-                    );
-                } else if !won {
-                    tracing::debug!("No win yet after move: {}", movement);
-                    self.status = GameStatus::Ongoing {
-                        next_player: other_player(player),
-                    };
-                } else {
-                    tracing::debug!("Player {} wins the game!", player);
-                    self.status = GameStatus::Finished { winner: player };
-                }
+                self.handle_placement(*player, *coords)?;
             }
+            Movement::Action { player, action } => {
+                self.handle_action(*player, action);
+            }
+        }
+        self.history.push(movement);
+        Ok(())
+    }
 
-            Movement::Action {
-                player,
-                action: GameAction::Resign,
-            } => {
+    /// Orchestrates the placement logic
+    fn handle_placement(&mut self, player: PlayerId, coords: Coordinates) -> Result<()> {
+        self.validate_placement(player, coords)?;
+
+        // Update board state (available cells, sets, board_map)
+        let set_idx = self.register_piece(player, coords);
+
+        // Connect neighbors and determine if this move won the game
+        let won = self.connect_neighbors_and_check_win(coords, player, set_idx);
+
+        self.update_status_after_placement(player, won);
+        Ok(())
+    }
+
+    /// Iterates over neighbors to union sets and checks for a win condition
+    fn connect_neighbors_and_check_win(
+        &mut self,
+        coords: Coordinates,
+        player: PlayerId,
+        current_set_idx: usize,
+    ) -> bool {
+        // Base win condition: The piece itself touches all required sides
+        let mut won = self.sets[current_set_idx].is_winning_configuration();
+
+        //
+        let neighbors = self.get_neighbors(&coords);
+
+        for neighbor in neighbors {
+            if let Some((neighbor_idx, neighbor_player)) = self.board_map.get(&neighbor)
+                && *neighbor_player == player
+            {
+                // Union returns true if the merge resulted in a winning connection
+                //
+                let connection_won = self.union(current_set_idx, *neighbor_idx);
+                won = won || connection_won;
+            }
+        }
+        won
+    }
+
+    /// Updates the game status (Finished vs Ongoing)
+    fn update_status_after_placement(&mut self, player: PlayerId, won: bool) {
+        if self.check_game_over() {
+            tracing::info!("Game was already over. Move ignored for status update.");
+        } else if won {
+            tracing::debug!("Player {} wins the game!", player);
+            self.status = GameStatus::Finished { winner: player };
+        } else {
+            // tracing::debug!("No win yet..."); // Optional debug
+            self.status = GameStatus::Ongoing {
+                next_player: other_player(player),
+            };
+        }
+    }
+
+    /// Handles non-placement actions (Resign, Swap, etc.)
+    fn handle_action(&mut self, player: PlayerId, action: &GameAction) {
+        match action {
+            GameAction::Resign => {
                 self.status = GameStatus::Finished {
                     winner: other_player(player),
                 };
             }
-
-            Movement::Action {
-                player,
-                action: GameAction::Swap,
-            } => {
+            GameAction::Swap => {
                 self.status = GameStatus::Ongoing {
                     next_player: other_player(player),
                 };
             }
         }
-        self.history.push(movement);
+    }
+
+    /// Handles validation logic (Game Over checks and Occupancy)
+    fn validate_placement(&self, player: PlayerId, coords: Coordinates) -> Result<()> {
+        if self.check_game_over() {
+            tracing::info!("Game is already over. Move at {} could be ignored", coords);
+        }
+
+        if self.board_map.contains_key(&coords) {
+            return Err(GameYError::Occupied {
+                coordinates: coords,
+                player,
+            });
+        }
         Ok(())
+    }
+
+    /// Updates internal data structures (Available cells, Sets, Map)
+    /// Returns the index of the newly created set.
+    fn register_piece(&mut self, player: PlayerId, coords: Coordinates) -> usize {
+        let cell_idx = coords.to_index(self.board_size);
+        self.available_cells.retain(|&x| x != cell_idx);
+
+        let set_idx = self.sets.len();
+        let new_set = PlayerSet {
+            parent: set_idx,
+            touches_side_a: coords.touches_side_a(),
+            touches_side_b: coords.touches_side_b(),
+            touches_side_c: coords.touches_side_c(),
+        };
+        self.sets.push(new_set);
+        self.board_map.insert(coords, (set_idx, player));
+
+        set_idx
     }
 
     /// Returns the size of the board (length of one side of the triangle).
@@ -248,6 +282,31 @@ impl GameY {
     /// Renders the current state of the board as a text string.
     /// If `show_coordinates` is true, the coordinates of each cell will be displayed.
     pub fn render(&self, options: &RenderOptions) -> String {
+        let mut result = String::new();
+        let coords_size = self.board_size.to_string().len();
+        let _ = writeln!(result, "--- Game of Y (Size {}) ---", self.board_size);
+
+        let indent_multiplier = self.get_indent_multiplier(options);
+
+        for row in 0..self.board_size {
+            let x = self.board_size - 1 - row;
+            indent(&mut result, x * indent_multiplier);
+
+            for y in 0..=row {
+                let z = row - y;
+                let coords = Coordinates::new(x, y, z);
+                let cell_str = self.format_cell(coords, options, coords_size);
+                let _ = write!(result, "{}   ", cell_str);
+            }
+
+            result.push('\n');
+            if options.show_idx || options.show_3d_coords {
+                result.push('\n');
+            }
+        }
+        result
+    }
+    /*pub fn render(&self, options: &RenderOptions) -> String {
         let mut result = String::new();
         let coords_size = self.board_size.to_string().len() as u32;
 
@@ -312,6 +371,47 @@ impl GameY {
             }
         }
         result
+    }*/
+
+    fn get_indent_multiplier(&self, options: &RenderOptions) -> u32 {
+        match (options.show_3d_coords, options.show_idx) {
+            (true, true) => 8,
+            (true, false) => 4,
+            (false, true) => 4,
+            (false, false) => 2,
+        }
+    }
+
+    fn format_cell(&self, coords: Coordinates, options: &RenderOptions, width: usize) -> String {
+        let player = self.board_map.get(&coords).map(|(_, p)| *p);
+
+        // 1. Base symbol
+        let mut symbol = match player {
+            Some(p) => format!("{}", p),
+            None => ".".to_string(),
+        };
+
+        // 2. Append metadata (3D Coords / Index)
+        if options.show_3d_coords {
+            symbol.push_str(&format!(
+                "({:0w$},{:0w$},{:0w$})",
+                coords.x(),
+                coords.y(),
+                coords.z(),
+                w = width
+            ));
+        }
+        if options.show_idx {
+            let idx = coords.to_index(self.board_size);
+            symbol.push_str(&format!("({}) ", idx));
+        }
+
+        // 3. Apply colors
+        if options.show_colors {
+            symbol = apply_player_color(symbol, player);
+        }
+
+        symbol
     }
 
     /// Disjoint Set Union 'Find' with path compression
@@ -341,16 +441,6 @@ impl GameY {
         }
         false
     }
-}
-
-// Helper struct for union-find to track connected components
-#[derive(Clone, Debug)]
-struct PlayerSet {
-    parent: SetIdx,
-    // We track which sides this specific set of pieces is touching
-    touches_side_a: bool,
-    touches_side_b: bool,
-    touches_side_c: bool,
 }
 
 fn indent(str: &mut String, level: u32) {
@@ -443,6 +533,14 @@ fn other_player(player: PlayerId) -> PlayerId {
         PlayerId::new(1)
     } else {
         PlayerId::new(0)
+    }
+}
+
+fn apply_player_color(symbol: String, player: Option<PlayerId>) -> String {
+    match player {
+        Some(p) if p.id() == 0 => format!("\x1b[34m{}\x1b[0m", symbol), // Blue
+        Some(p) if p.id() == 1 => format!("\x1b[31m{}\x1b[0m", symbol), // Red
+        _ => symbol,
     }
 }
 
