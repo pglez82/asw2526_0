@@ -1,9 +1,10 @@
 use crate::{Coordinates, GameY, YEN, check_api_version, error::ErrorResponse, state::AppState};
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
 };
 use serde::{Deserialize, Serialize};
+use serde_json::from_str;
 
 /// Path parameters extracted from the choose endpoint URL.
 #[derive(Deserialize)]
@@ -48,45 +49,84 @@ pub async fn choose(
     Path(params): Path<ChooseParams>,
     Json(yen): Json<YEN>,
 ) -> Result<Json<MoveResponse>, Json<ErrorResponse>> {
-    check_api_version(&params.api_version)?;
+    choose_from_yen(&params.api_version, params.bot_id, yen, state)
+}
+
+/// Query parameters accepted by the `/play` endpoint.
+#[derive(Deserialize)]
+pub struct PlayQuery {
+    /// JSON-encoded game position in YEN format.
+    position: String,
+    /// Bot identifier to use for move selection.
+    bot_id: String,
+}
+
+/// Handler for the `/play` endpoint.
+
+/// Expects query parameters:
+/// - `position`: JSON string of the YEN position
+/// - `bot_id`: bot name
+pub async fn play(
+    State(state): State<AppState>,
+    Query(query): Query<PlayQuery>,
+) -> Result<Json<MoveResponse>, Json<ErrorResponse>> {
+    let yen = match from_str::<YEN>(&query.position) {
+        Ok(yen) => yen,
+        Err(err) => {
+            return Err(Json(ErrorResponse::error(
+                &format!("Invalid position parameter: {}", err),
+                Some("v1".to_string()),
+                Some(query.bot_id),
+            )));
+        }
+    };
+    choose_from_yen("v1", query.bot_id, yen, state)
+}
+
+fn choose_from_yen(
+    api_version: &str,
+    bot_id: String,
+    yen: YEN,
+    state: AppState,
+) -> Result<Json<MoveResponse>, Json<ErrorResponse>> {
+    check_api_version(api_version)?;
     let game_y = match GameY::try_from(yen) {
         Ok(game) => game,
         Err(err) => {
             return Err(Json(ErrorResponse::error(
                 &format!("Invalid YEN format: {}", err),
-                Some(params.api_version),
-                Some(params.bot_id),
+                Some(api_version.to_string()),
+                Some(bot_id.clone()),
             )));
         }
     };
-    let bot = match state.bots().find(&params.bot_id) {
+    let bot = match state.bots().find(&bot_id) {
         Some(bot) => bot,
         None => {
             let available_bots = state.bots().names().join(", ");
             return Err(Json(ErrorResponse::error(
                 &format!(
                     "Bot not found: {}, available bots: [{}]",
-                    params.bot_id, available_bots
+                    bot_id, available_bots
                 ),
-                Some(params.api_version),
-                Some(params.bot_id),
+                Some(api_version.to_string()),
+                Some(bot_id),
             )));
         }
     };
     let coords = match bot.choose_move(&game_y) {
         Some(coords) => coords,
         None => {
-            // Handle the case where the bot has no valid moves
             return Err(Json(ErrorResponse::error(
                 "No valid moves available for the bot",
-                Some(params.api_version),
-                Some(params.bot_id),
+                Some(api_version.to_string()),
+                Some(bot_id),
             )));
         }
     };
     let response = MoveResponse {
-        api_version: params.api_version,
-        bot_id: params.bot_id,
+        api_version: api_version.to_string(),
+        bot_id,
         coords,
     };
     Ok(Json(response))

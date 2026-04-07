@@ -76,6 +76,41 @@ async fn test_choose_endpoint_with_valid_request() {
 }
 
 #[tokio::test]
+async fn test_play_endpoint_with_query_position() {
+    let app = test_app();
+
+    let yen = YEN::new(4, 1, vec!['B', 'R'], "B/RB/RB./....".to_string());
+    let position = serde_json::to_string(&yen).unwrap();
+    let encoded_position = position
+        .replace('"', "%22")
+        .replace('{', "%7B")
+        .replace('}', "%7D")
+        .replace(':', "%3A")
+        .replace(',', "%2C")
+        .replace('[', "%5B")
+        .replace(']', "%5D");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(&format!("/play?position={}&bot_id=random_bot", encoded_position))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let move_response: MoveResponse = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(move_response.api_version, "v1");
+    assert_eq!(move_response.bot_id, "random_bot");
+}
+
+#[tokio::test]
 async fn test_choose_endpoint_with_partially_filled_board() {
     let app = test_app();
 
